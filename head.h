@@ -17,9 +17,14 @@
 #include<math.h>
 
 #define PERCENT 0.5 // default parameter in defining transient bond 
-#define Maxneighb 20 // maximum possiblenumber of neighbor for the a molecule
+#define Maxneighb 150 // maximum possiblenumber of neighbor for the a molecule
 #define FLN 10000 // maximum string length for each line
-#define MAXNATOM 10 // maximum number of atoms in a molecule
+#define MAXNATOM 20 // maximum number of atoms in a molecule
+#define Ncarbon 3
+
+#define Xsize 36.0956137      // 2017.04.17, for propane box, the size of the simulation box, for calculating water:solute distance
+#define Ysize 36.0956137
+#define Zsize 36.0956137
 
 struct MOLE  // define the struct of a molecule
 {
@@ -88,4 +93,7 @@ int myupdate(int target, int **nei, int **att, int **atn, int *nsnaps);
 //update graphgeod files with one snapshot
 int myupdateone(int target, int **nei, int **att, int **atn, int snap);
 
+
+//calculating the distance from the target molecule to a solute, 2016.03.08
+float caldist(float **result, int target, int t, int dor, int acc, struct MOLE *m1, struct MOLE *m2, struct MOLE *mt, int *nnodes);
 

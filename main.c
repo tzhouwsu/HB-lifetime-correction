@@ -41,6 +41,8 @@ int main(int argc, char *argv[])
 
 	fclose(fip);
 
+//	printf(" %d %d\n",*psnaps,psnaps);
+
 	printf("\n------Output file format:------\n");
 	printf("  Degrees-i-j: the degree destribution of solvent i with solvent j\n");
 	printf("    atom 1 degree 2 observation 110 , means, there are 110 configurations when atom 1 is interacting with 2 molecules\n");

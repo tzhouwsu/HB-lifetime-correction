@@ -1,23 +1,22 @@
 
 CC = gcc
-CFLAG = -g -Wall -I -O3 
-LIBS = -lm 
+CFLAG = -g -Wall -I
+LIBS = -lm -fopenmp
 
-main: main.o functions.o corrcode.o readinput.o head.h
-	$(CC) main.o functions.o corrcode.o readinput.o -o lifetime_corr.exe $(LIBS) $(CFLAG)
+main: main.o functions.o corrcode.o readinput.o
+	$(CC) main.o functions.o corrcode.o readinput.o -o lifetime_corr_omp.exe $(LIBS)
 
-main.o: main.c head.h
-	$(CC) -c main.c $(CFLAG)
+main.o: main.c
+	$(CC) -c main.c $(LIBS)
 
-corrcode.o: corrcode.c head.h
-	$(CC) -c corrcode.c $(CFLAG)
+corrcode.o: corrcode.c
+	$(CC) -c corrcode.c $(LIBS)
 
-functions.o: functions.c head.h
-	$(CC) -c functions.c $(CFLAG)
+functions.o: functions.c
+	$(CC) -c functions.c $(LIBS)
 
-readinput.o: readinput.c head.h
-	$(CC) -c readinput.c $(CFLAG)
-
+readinput.o: readinput.c
+	$(CC) -c readinput.c $(LIBS)
 clean:
-	rm lifetime_corr.exe main.o functions.o corrcode.o readinput.o
+	rm lifetime_corr_omp.exe main.o functions.o corrcode.o readinput.o
 

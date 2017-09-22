@@ -11,11 +11,11 @@ int loadhistory(int **nei, int **att, int **atn, int snap, int watt)
 	char file[100];
 	char buffer[100];
 	int number,node1,node2,pbcx,pbcy,pbcz,atm1,atm2;
-	int dup,k;
-	sprintf(file, "Input.water%d.xyz.water%d.xyz.GraphGeod",snap,snap); // the name of the graphgeod file here, two "%d" will be filled with value of integer number "snap"
+	int dup,k,m;
+	sprintf(file, "Input.water%d.xyz.solB%d.xyz.GraphGeod",snap,snap); // the name of the graphgeod file here, two "%d" will be filled with value of integer number "snap"
 	if((fp=fopen(file,"r"))==NULL)
 	{
-		printf("Error: can't read the graphgeod file\n");
+		printf("Error: can't read the graphgeod file, snap %d, water %d\n",snap,watt);
 		fclose(fp);
 		return(-1);
 	}
@@ -70,7 +70,7 @@ int loadhistory(int **nei, int **att, int **atn, int snap, int watt)
 // calculate the total degree, the donating degree and the accepting degree at a certain snapshot(snap)
 int caldegrees(int d[MAXNATOM+1], int snap, int dor, int acc, struct MOLE *mt, struct MOLE *pt, int **nei, int **att, int **atn)
 {
-	int j,atomt;
+	int j,atomt,tot;
 	int partner,group;
 
 	for(j=0;j<=MAXNATOM;j++)
@@ -148,7 +148,7 @@ int findHbond(int water, int atmt, int atmn, int snap, int **nei, int **att, int
 // find the continuous bonded segment starting from snap, get the period ti to tf in array seg[]
 int findseg(int seg[2], int water, int atm1, int atm2, int snap, int **nei, int **att, int **atn, int *nsnaps)
 {
-	int i;
+	int i,j;
 	int t;
 	int find;
 
@@ -214,7 +214,7 @@ int itransbond(int target, int water, int atmt, int atmn, int snap1, int snap2, 
 	int j,output;
 	int occur,total,left,right;
 	float percent;
-	int find;
+	int find,k;
 
 	left=(int)(snap1+snap2-ppars->persist[dor][acc])/2;
 	right=(int)(snap1+snap2+ppars->persist[dor][acc])/2;
@@ -336,7 +336,7 @@ int findatom(int b[Maxneighb+1], int atm1, int tsnap1, int tsnap2, int **nei, in
 //remove a specific H-bond from the original graphgeod
 int myremove(int target, int water, int atom1, int atom2, int snap, int **nei, int **att, int **atn)
 {
-	int find,j,k;
+	int find,j,k,i;
 
 	k=nei[snap][0];
 
@@ -392,7 +392,7 @@ int myupdateone(int target, int **nei, int **att, int **atn, int snap)
 	int j,pbc;
 
 	pbc=0;    // currently, the pbc information is not considered in correction
-	sprintf(newname,"Input.water%d.xyz.water%d.xyz.GraphGeod-updated",snap,snap);
+	sprintf(newname,"Input.water%d.xyz.solB%d.xyz.GraphGeod-updated",snap,snap);
 	fupdate=fopen(newname,"a");
 
 	for(j=1;j<=nei[snap][0];j++)
@@ -422,5 +422,126 @@ int myupdate(int target, int **nei, int **att, int **atn, int *nsnaps)
 	return(0);
 }
 
+//calculating the distance from the target molecule to a solute, 2016.03.08
+float caldist(float **result, int target, int t, int dor, int acc, struct MOLE *m1, struct MOLE *m2, struct MOLE *mt, int *nnodes) 
+{
+//	float result[12];   // for alkanes, read maximum of 11 Carbons
+	float output=0.0;
+	FILE *fw,*fs;
+	char filename[FLN],buff[FLN],*tok,label,ind1,ind2;
+	int index1,natoms,i,j,cnum;
+	float watx,waty,watz,solx,soly,solz;  // water Oxygen coordinates and solute first atom coordinates
+	float distx,disty,distz;
 
+	for(i=0;i<Ncarbon;i++)
+		result[t][i]=0.0;
+
+	sprintf(filename,"water%d.xyz",t);
+	if((fw=fopen(filename,"r"))==NULL)
+	{
+		printf("In function 'caldist': can not find the xyz file at snapshot %d\n",t);
+		output=-1.0;
+	}
+	sprintf(filename,"solB%d.xyz",t);
+	if((fs=fopen(filename,"r"))==NULL)
+	{
+		printf("In function 'caldist': can not find the xyz file at snapshot %d\n",t);
+		output=-1.0;
+	}
+
+	if(output!=0.0)
+	{
+		fclose(fw);
+		fclose(fs);
+		return output;
+	}
+	else
+	{
+		if(mt->idi > *nnodes || mt->idf > *nnodes)
+			output=-2.0;  // error
+		else
+		{
+			index1=chkblg(target,m1,m2);
+			if(index1==1)
+				natoms=m1->n;     // I assume water is the first solvent
+			else if(index1==2)
+			{
+				printf("Warning in function 'caldist': the target molecule is solute?\n");
+				fclose(fw);
+				fclose(fs);
+				return(-3.0);
+			}
+
+			rewind(fw);
+			fgets(buff,sizeof(buff),fw);
+			fgets(buff,sizeof(buff),fw);  // skip the head line in xyz file
+			for(i=1;i<target;i++)
+				for(j=1;j<=natoms;j++)
+					fgets(buff,sizeof(buff),fw); // skip the coordinates before target molecule
+
+			// there will be problem with strtok refering to 'NULL' in omp parallel, so change to fscanf, 2016.03.09
+//			fgets(buff,sizeof(buff),fw);  // the first atom of target molecule;
+//			tok = strtok(buff," \n");   // the atom label
+//			tok = strtok(NULL," \n");    // the x coordinate
+//			watx = atof(tok);
+//			tok = strtok(NULL," \n");    // the y coordinate
+//			waty = atof(tok);
+//			tok = strtok(NULL," \n");    // the z coordinate
+//			watz = atof(tok);
+			if(fscanf(fw,"%c%c %f %f %f",&ind1,&ind2,&watx,&waty,&watz)!=5)
+			{
+				fclose(fw);
+				fclose(fs);
+				return(-4.0);
+			}
+
+			rewind(fs);      // 2015.12.21, I only have one solute molecule
+			fgets(buff,sizeof(buff),fs);
+			fgets(buff,sizeof(buff),fs);  // skip the head line in xyz file
+			cnum=0;
+			while(fscanf(fs,"%c%c %f %f %f",&ind1,&ind2,&solx,&soly,&solz)==5)
+			{
+				fgets(buff,sizeof(buff),fs); // skip the '\n' character in a line
+		//		tok = strtok(buff," \n");
+				label = ind1;
+				if(label == 'C')   // calculate the distance to each Carbon atoms
+				{
+					cnum += 1;
+
+					// there will be problem with strtok refering to 'NULL' in omp parallel, so change to fscanf, 2016.03.09
+//					tok = strtok(NULL," \n");
+//					solx = atof(tok);
+//					tok = strtok(NULL," \n");
+//					soly = atof(tok);
+//					tok = strtok(NULL," \n");
+//					solz = atof(tok);
+			
+					distx=watx-solx;
+					if(distx > Xsize/2)
+						distx = Xsize - distx;
+					else if(distx < -Xsize/2)
+						distx = Xsize + distx;
+					disty=waty-soly;
+					if(disty > Ysize/2)
+						disty = Ysize - disty;
+					else if(disty < - Ysize/2)
+						disty = Ysize + disty;
+					distz=watz-solz;
+					if(distz > Zsize/2)
+						distz = Zsize - distz;
+					else if(distz < -Zsize/2)
+						distz = Zsize + distz;
+		
+					result[t][cnum] = sqrt(pow(distx,2)+pow(disty,2)+pow(distz,2));
+				}
+			}
+			result[t][0]=cnum;
+		}
+
+		fclose(fw);
+		fclose(fs);
+		return(output);
+	}
+
+}
 

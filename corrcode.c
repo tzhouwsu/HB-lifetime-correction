@@ -4,10 +4,9 @@
 
 int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, struct MOLE *pms, struct PARS *pars, int *nnodes, int *nsnaps, int *ind)
 {
-	FILE *fop1,*fop2,*fop3;
+	FILE *fop1,*fop2,*fop3,*fop4;
 	char fname[FLN];
-	
-	
+		
 	sprintf(fname,"Degrees-%d-%d",dor,acc);
 	fop1=fopen(fname,"w");
 	sprintf(fname,"Lifetimes-%d-%d",dor,acc);
@@ -15,7 +14,10 @@ int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, s
 	sprintf(fname,"Switches-%d-%d",dor,acc);
 	fop3=fopen(fname,"w");
 
-	int i,j,k,m;    // dummy labels
+	sprintf(fname,"degree-data-%d-%d",dor,acc);    // 2015.12.21, add the distance to solute information
+	fop4=fopen(fname,"w");
+
+	int i,j,k,m,di;    // dummy labels
 	int **neighb,**atmt,**atmn;
 	neighb = (int **)malloc(sizeof(int *)*(*nsnaps+1));
 	for(i=0;i<=(*nsnaps);i++)
@@ -32,12 +34,15 @@ int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, s
 	for(i=0;i<=MAXNATOM;i++)
 		label[i] = (int *)calloc(sizeof(int),(*nnodes+1));
 
-	int deg[MAXNATOM+1],degrees[Maxneighb+1][MAXNATOM+1];
-	int sym,iapp,symi,syma,symr,symu,tagf,ipt;
+	int deg[MAXNATOM+1],degrees[Maxneighb+1][MAXNATOM+1],statnum;
+	int sym,iapp,symi,syma,symr,symu,tagf,ipt,symd;
 	int tgt,number,atomt,atomn,nb,nbn[Maxneighb+1],nbnew,atomnew;
 	int period[2],t,t1,t2,t3,t4,tn,ti,tj,tsnap;
 	int nbbelong,tgtbelong,tgtidi,tgtidf;
-
+	float **dist,symt,tempdist[Ncarbon];     // 2015.12.21, distance of the target molecule to the solute, at each snapshot
+	dist = (float **)malloc(sizeof(float *)*(*nsnaps+1));
+	for(i=0;i<=*nsnaps;i++)
+		dist[i] = (float *)malloc(sizeof(float)*Ncarbon);
 
 	if(dor==1) // either the first molecule or the second molecule is treated as the target molecule
 	{
@@ -65,17 +70,20 @@ int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, s
 		for(i=0;i<MAXNATOM;i++)
 			for(j=0;j<=*nnodes;j++)
 				label[i][j]=0;
+		for(t=0;t<=(*nsnaps);t++)
+			for(i=0;i<Ncarbon;i++)
+				dist[t][i]=0.0;
 
-	//	printf("   loading history for %d\n",tgt);
-
+//		printf("   loading history for %d\n",tgt);
 		// load the HB history of the target molecle, which acts as the donor
+#pragma omp parallel for shared(neighb,atmt,atmn,tgt)
 		for(t=1;t<=(*nsnaps);t++)
 		{
-			sym=loadhistory(neighb,atmt,atmn,t,tgt);  // regard solute individually
-			if(sym!=0)
-				break;
+			sym+=loadhistory(neighb,atmt,atmn,t,tgt);  // regard solute individually
+		//	if(sym!=0)
+		//		break;
 		}
-		if(sym!=0)
+		if(sym<0)
 		{
 			printf("In funct corrcode.c: error in loading history\n");
 			break;
@@ -89,25 +97,69 @@ int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, s
 		if(iapp!=1) // if this target molecule does not have HB history, skip it
 			continue;
 
-	//	printf("   calculate degrees for %d\n",tgt);
+		// load the distances to the solute
+//		printf("   loading distance for %d\n",tgt);
+		tgtbelong=chkblg(tgt,pm1,pm2);
+		if(tgtbelong == 1)
+		{	
+#pragma omp parallel for shared(dist,tgt,dor,acc,pm1,pm2,pms,nnodes)
+			for(t=1;t<=(*nsnaps);t++)
+			{
+				symt+=caldist(dist,tgt,t,dor,acc,pm1,pm2,pms,nnodes);
+//				if(symt<0.0) // if there is error
+//					break;
+			}
+			if(symt<0)
+			{
+				printf("In corrcode.c: error in loading distances\n");
+				break;
+			}
+		}
 
+//		printf("   calculate degrees for %d\n",tgt);
 		// count the degrees of the target solvent
 		for(t=1;t<=(*nsnaps);t++)
 		{
 			for(j=0;j<=MAXNATOM;j++)
 				deg[j]=0;
 
-			caldegrees(deg,t,dor,acc,pm1,pm2,neighb,atmt,atmn);
-
+			symd=caldegrees(deg,t,dor,acc,pm1,pm2,neighb,atmt,atmn);
+			if(symd!=0)
+				break;
+			else
+			{
+				for(j=0;j<=MAXNATOM;j++)
+					degrees[deg[j]][j] += 1;
+			}
 	//		if(deg[0]>7)    // I found a bug with duplicated degree counting, 2015-12-10
 	//			for(j=0;j<=MAXNATOM;j++)
 	//				printf("    %d %d %d %d\n",tgt,t,j,deg[j]);
 
-			for(j=0;j<=MAXNATOM;j++)
-				degrees[deg[j]][j] += 1;
+			if(*ind == 0)
+			{
+				fprintf(fop4,"%d :",deg[0]);
+				if(dor==1)
+				{
+					for(j=1;j<=pm1->n;j++)
+						fprintf(fop4," %d",deg[j]);
+				}
+				else if(dor==2)
+				{
+					for(j=1;j<=pm2->n;j++)
+						fprintf(fop4," %d",deg[j]);
+				}
+				fprintf(fop4," : ");
+				for(j=1;j<=dist[t][0];j++)
+					fprintf(fop4,"%f ",dist[t][j]);
+				fprintf(fop4,"\n");
+			}
+
 		}
 
-	//	printf("   calculating lifetime %d\n",tgt);
+		if(symd!=0 || symt<0.0)   // if there is some error in calculating degrees and distances, the code stops
+			break;
+
+//		printf("   calculating lifetime %d\n",tgt);
 
 		// calculate the lifetimes associated with target molecule, there are three modes,
 		tagf=syma=symr=symi=symu=0; // initialize all the error indicators
@@ -154,13 +206,27 @@ int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, s
 						{
 							if(symi==1) // this interaction (t1-t2) is transient bond, and no information after it
 							{
-								fprintf(fop2,"%d %d %d %d %d %d T U\n",tgt,nb,atomt,atomn,t1,t2); // T means transient, U means undetermined
-								fprintf(fop3,"T U %d %d %d %d %d %d %d %d\n",tgt,nb,nb,atomt,t1,t2,*nsnaps+1,*nsnaps+1);
+								fprintf(fop2,"%d %d %d %d %d %d T U ",tgt,nb,atomt,atomn,t1,t2); // T means transient, U means undetermined
+								fprintf(fop3,"T U %d %d %d %d %d %d %d %d ",tgt,nb,nb,atomt,t1,t2,*nsnaps+1,*nsnaps+1);
+								for(di=1;di<=dist[t][0];di++)   // loop over all carbon site, i.e. distance from target water to every carbon
+								{
+									fprintf(fop2,"%f ",dist[t][di]);
+									fprintf(fop3,"%f ",dist[t][di]);
+								}
+								fprintf(fop2," \n");
+								fprintf(fop3," \n");
 							}
 							else if(symi==0)  // it is not transient bond, yet no information after it
 							{
-								fprintf(fop2,"%d %d %d %d %d %d R U\n",tgt,nb,atomt,atomn,t1,t2); // R means real, U means undetermined
-								fprintf(fop3,"R U %d %d %d %d %d %d %d %d\n",tgt,nb,nb,atomt,t1,t2,*nsnaps+1,*nsnaps+1);
+								fprintf(fop2,"%d %d %d %d %d %d R U ",tgt,nb,atomt,atomn,t1,t2); // R means real, U means undetermined
+								fprintf(fop3,"R U %d %d %d %d %d %d %d %d ",tgt,nb,nb,atomt,t1,t2,*nsnaps+1,*nsnaps+1);
+								for(di=1;di<=dist[t][0];di++)
+								{
+									fprintf(fop2,"%f ",dist[t][di]);
+									fprintf(fop3,"%f ",dist[t][di]);
+								}
+								fprintf(fop2," \n");
+								fprintf(fop3," \n");
 							}
 						}
 						else    // there's some interaction after t1-t2
@@ -169,13 +235,27 @@ int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, s
 							{
 								if(symi==1)  // this interaction(t1-t2) is transient bond, and it reoccurs at t3
 								{
-									fprintf(fop2,"%d %d %d %d %d %d T N\n",tgt,nb,atomt,atomn,t1,t2); // T means transient, N means it does not change partner
-									fprintf(fop3,"T N %d %d %d %d %d %d %d %d\n",tgt,nb,nb,atomt,t1,t2,t3,t4);
+									fprintf(fop2,"%d %d %d %d %d %d T N ",tgt,nb,atomt,atomn,t1,t2); // T means transient, N means it does not change partner
+									fprintf(fop3,"T N %d %d %d %d %d %d %d %d ",tgt,nb,nb,atomt,t1,t2,t3,t4);
+									for(di=1;di<=dist[t][0];di++)
+									{
+										fprintf(fop2,"%f ",dist[t][di]);
+										fprintf(fop3,"%f ",dist[t][di]);
+									}
+									fprintf(fop2," \n");
+									fprintf(fop3," \n");
 								}
 								else if(symi==0)
 								{
-									fprintf(fop2,"%d %d %d %d %d %d R N\n",tgt,nb,atomt,atomn,t1,t2); // R means real, N means it does not change partner
-									fprintf(fop3,"R N %d %d %d %d %d %d %d %d\n",tgt,nb,nb,atomt,t1,t2,t3,t4);
+									fprintf(fop2,"%d %d %d %d %d %d R N ",tgt,nb,atomt,atomn,t1,t2); // R means real, N means it does not change partner
+									fprintf(fop3,"R N %d %d %d %d %d %d %d %d ",tgt,nb,nb,atomt,t1,t2,t3,t4);
+									for(di=1;di<=dist[t][0];di++)
+									{
+										fprintf(fop2,"%f ",dist[t][di]);
+										fprintf(fop3,"%f ",dist[t][di]);
+									}
+									fprintf(fop2," \n");
+									fprintf(fop3," \n");
 								}
 							}
 
@@ -203,19 +283,39 @@ int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, s
 									{
 										if(ipt>0) // the indicator for printing the Lifetime information, since t1-t2 lifetime should only be printed once
 										{
-											fprintf(fop2,"%d %d %d %d %d %d T Y\n",tgt,nb,atomt,atomn,t1,t2); // T means transient, Y means it does not change partner
+											fprintf(fop2,"%d %d %d %d %d %d T Y ",tgt,nb,atomt,atomn,t1,t2); // T means transient, Y means it does not change partner
+											for(di=1;di<=dist[t][0];di++)
+											{
+												fprintf(fop2,"%f ",dist[t][di]);
+											}
+											fprintf(fop2," \n");
 											ipt=0;
 										}
-										fprintf(fop3,"T Y %d %d %d %d %d %d %d %d\n",tgt,nb,nbnew,atomt,t1,t2,ti,tj);
+										fprintf(fop3,"T Y %d %d %d %d %d %d %d %d ",tgt,nb,nbnew,atomt,t1,t2,ti,tj);
+										for(di=1;di<=dist[t][0];di++)
+										{
+											fprintf(fop3,"%f ",dist[t][di]);
+										}
+										fprintf(fop3," \n");
 									}
 									else if(symi==0)
 									{
 										if(ipt>0) // the indicator for printing the Lifetime information, since t1-t2 lifetime should only be printed once
 										{
-											fprintf(fop2,"%d %d %d %d %d %d R Y\n",tgt,nb,atomt,atomn,t1,t2); // R means transient, Y means it does not change partner
+											fprintf(fop2,"%d %d %d %d %d %d R Y ",tgt,nb,atomt,atomn,t1,t2); // R means transient, Y means it does not change partner
+											for(di=1;di<=dist[t][0];di++)
+											{
+												fprintf(fop2,"%f ",dist[t][di]);
+											}
+											fprintf(fop2," \n");
 											ipt=0;
 										}
-										fprintf(fop3,"R Y %d %d %d %d %d %d %d %d\n",tgt,nb,nbnew,atomt,t1,t2,ti,tj);
+										fprintf(fop3,"R Y %d %d %d %d %d %d %d %d ",tgt,nb,nbnew,atomt,t1,t2,ti,tj);
+										for(di=1;di<=dist[t][0];di++)
+										{
+											fprintf(fop3,"%f ",dist[t][di]);
+										}
+										fprintf(fop3," \n");
 									}
 								} // end of for(k=1;k<=nbn[0];k++)
 							} // end of if(tn<t3 && tn<*nsnaps) // new partner approaches
@@ -404,8 +504,10 @@ int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, s
 
 		if(*ind==1 || *ind==2 || *ind==3)  // update the GraphGeod files, for correction
 		{
-			symu=myupdate(tgt,neighb,atmt,atmn,nsnaps);  // update the GraphGeod file based on the new arrays
-			if(symu!=0)  // if there's some error in calling this function, it should stop, here it breaks from loop tgt
+#pragma omp parallel for shared(neighb,atmt,atmn,tgt)	
+			for(tsnap=1;tsnap<=*nsnaps;tsnap++)
+				symu+=myupdateone(tgt,neighb,atmt,atmn,tsnap);  // update the GraphGeod file based on the new arrays
+			if(symu<0)  // if there's some error in calling this function, it should stop, here it breaks from loop tgt
 				break;
 		}
 
@@ -433,6 +535,7 @@ int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, s
 	fclose(fop1);
 	fclose(fop2);
 	fclose(fop3);
+	fclose(fop4);
 
 	for(i=0;i<=(*nsnaps);i++)
 	{
