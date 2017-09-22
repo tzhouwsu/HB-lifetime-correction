@@ -1,0 +1,64 @@
+
+*********************************************
+HOW TO USE THIS CODE FOR LIFETIME CORRECTION
+Tiecheng Zhou
+2015.1102
+********************************************
+
+1) files to be read: 
+
+1.1) GraphGeod files from the ChemNetworks
+they should contain the atom-id information, so it should have at least 7 columes,
+e.g 12 34 0 0 0 2 1 1.053 120.3 
+water 12 is H-bonded with water 34, the atom(#2, e.g 'H') from water 12 and atom(#1, e.g 'O') from water 34
+the HB distance is 1.053 and the HB angle is 120.3
+
+1.2) an input-file, see example of 'input-corr'
+
+
+----------------------------------------------------
+2) how to use this code:
+
+2.1 it reads an infput-file, see example below, please do not change the keys in []
+
+[NUMBER OF NODES] 216		//the largest molecule id from ChemNetworks, usually it is equal to the # of molecules in the system
+[NUMBER OF SNAPS] 100		//the total # of snapshots
+[MODE] 0			//run this code with several modes: mode 0 (no correction) or 1 (correct for transient breaks) or 2 (correct for transient bonds) or 3 (correct for both) 
+[IDS OF SOLVENT1] 1 215			//the initial and the final molecule ids for solvent1, only read continuous ids, compatible with ChemNetworks output
+[ATOMS OF SOLVENT1] 3 OW HW HW		//the atom label of solvent1, used to identify the atom id, so should be in the same order as in the ChemNetworks
+[IDS OF SOLVENT2] 216 216		//the initial and the final molecule ids for solvent2
+[ATOMS OF SOLVENT2] 3 OW HW HW		//the atom label of solvent2
+[LIFETIME OF SOLVENT1 SOLVENT1] 1 10 5	//correction parameters for H-bond for solvent1 with solvent1. the first number can be '1' (calculate lifetime) or '0' (don't calculate lifetime), the second number is PERSISTENCE (used to for transient bonds), and the third number is TOLERENCE (used for transient breaks)
+[LIFETIME OF SOLVENT2 SOLVENT2] 1 15 5
+[LIFETIME OF SOLVENT1 SOLVENT2] 1 20 5	//the first solvent is the target molecule to be analyzed 
+[LIFETIME OF SOLVENT2 SOLVENT1] 1 25 5
+[END]					//at the end of the inputfile, everything after this line is ignored
+
+2.2 how to run the code:
+
+A. before run this code
+  check the values in the inputfile are reasonable
+  check the global variables in 'head.h', make sure the 
+  check the GraphGeod file name in 'functions.c', need to specify the filename at line 15, 395, where sprintf is used
+
+B. compile the code and run the code
+  compile the code by simply type 'make' in the command line: $ make,    // the actual compiling commands are in 'Makefile'
+  execute the code by: $ ./lifetime_corr.exe input-corr    // here input-corr is the input-file name
+
+C. run the code using 4 steps
+  step0, using MODE '0' to determine the parameters, PERSISTENCE and TOLERENCE  // they can be chosen as the average HB lifetime and average break duration
+  step1, using MODE '0' to analyze the original lifetimes  // after choosing the proper parameters
+  step2, using MODE '1' to correct for transient breaks  // note that the corrected GraphGeod files are named with suffix '*-updated', so need to rename them to use the same code
+  step3, using MODE '2' to correct for transient bonds   // step2 and step3 can be combined if MODE '3' is used, which is correct both
+  step4, using MODE '0' to analyze the corrected lifetimes
+
+D. analyse the results
+ after running this code, you should get output files from step0, step1 and step4, (the files are empty if running MODE 1, 2, or 3)
+ there are Degrees-suffix, Lifetimes-suffix, and Switches-suffix, suffix meaning: e.g. Degrees-1-2, the degree of solvent1 from solvent2
+
+ in the Degrees file, the total-degree-distribution, the donating-degree-distribution, the accepting-degree-distribution, with respect to each atom from the target molecule
+ in the Lifetimes file, '12 34 2 1 3 19 R Y', means water 12 is H-bonded with water 34, using atom2 and atom1 respectively, from snapshot 3 to 19, it is a Real(R) HB [or Transient(T)], and after this period it changes its HB partner Yes(Y) [or No(N)]
+
+ the Degrees can be directly copied to excel, while for the Lifetimes, another code 'count_lifetime.c' can be used to calculate the weighted average, the Switchs file provide the information of all the captured HB breakage events
+
+
