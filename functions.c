@@ -461,15 +461,14 @@ float caldist(float **result, int target, int t, int dor, int acc, struct MOLE *
 			output=-2.0;  // error
 		else
 		{
+			output = 0.0;
 			index1=chkblg(target,m1,m2);
 			if(index1==1)
 				natoms=m1->n;     // I assume water is the first solvent
 			else if(index1==2)
 			{
 				printf("Warning in function 'caldist': the target molecule is solute?\n");
-				fclose(fw);
-				fclose(fs);
-				return(-3.0);
+				output = -3.0;
 			}
 
 			rewind(fw);
@@ -490,9 +489,7 @@ float caldist(float **result, int target, int t, int dor, int acc, struct MOLE *
 //			watz = atof(tok);
 			if(fscanf(fw,"%c%c %f %f %f",&ind1,&ind2,&watx,&waty,&watz)!=5)
 			{
-				fclose(fw);
-				fclose(fs);
-				return(-4.0);
+				output = -4.0;
 			}
 
 			rewind(fs);      // 2015.12.21, I only have one solute molecule
