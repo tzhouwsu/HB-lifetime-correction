@@ -42,7 +42,7 @@ int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, s
 	float **dist,symt,tempdist[Ncarbon];     // 2015.12.21, distance of the target molecule to the solute, at each snapshot
 	dist = (float **)malloc(sizeof(float *)*(*nsnaps+1));
 	for(i=0;i<=*nsnaps;i++)
-		dist[i] = (float *)malloc(sizeof(float)*Ncarbon);
+		dist[i] = (float *)malloc(sizeof(float)*(Ncarbon+1));
 
 	if(dor==1) // either the first molecule or the second molecule is treated as the target molecule
 	{
@@ -542,10 +542,12 @@ int corrcode(int dor, int acc, struct MOLE *pm1, struct MOLE *pm2, int *nsolu, s
 		free(neighb[i]);
 		free(atmt[i]);
 		free(atmn[i]);
+		free(dist[i]);
 	}
 	free(neighb);
 	free(atmt);
 	free(atmn);
+	free(dist);
 
 	for(i=0;i<MAXNATOM;i++)
 		free(label[i]);
