@@ -19,7 +19,7 @@
 #define PERCENT 0.5 // default parameter in defining transient bond 
 #define Maxneighb 20 // maximum possiblenumber of neighbor for the a molecule
 #define FLN 10000 // maximum string length for each line
-#define MAXNATOM 10 // maximum number of atoms in a molecule
+#define MAXNATOM 50 // maximum number of atoms in a molecule
 
 struct MOLE  // define the struct of a molecule
 {
