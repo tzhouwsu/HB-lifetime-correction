@@ -216,8 +216,13 @@ int itransbond(int target, int water, int atmt, int atmn, int snap1, int snap2, 
 	float percent;
 	int find;
 
-	left=(int)(snap1+snap2-ppars->persist[dor][acc])/2;
-	right=(int)(snap1+snap2+ppars->persist[dor][acc])/2;
+	// only need to check one snapshot when persist is <= 1
+	if (ppars->persist[dor][acc] <= 1)
+		left = right = (int)(snap1 + snap2)/2;
+	else {
+		left=(int)(snap1+snap2-ppars->persist[dor][acc])/2;
+		right=(int)(snap1+snap2+ppars->persist[dor][acc])/2;
+	}
 
 	if(left<=0)
 		left=1;
@@ -235,7 +240,7 @@ int itransbond(int target, int water, int atmt, int atmn, int snap1, int snap2, 
 	}
 	percent = (occur+0.0)/total;
 
-	if(percent <= PERCENT)
+	if(percent < PERCENT)
 		output=1;
 	else
 		output=0;
